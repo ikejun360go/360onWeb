@@ -1,0 +1,335 @@
+<!--
+/**
+ * 360 Image DEEP HACK Equi2Cube
+ * 
+ * @description 360イメージを編集するWebアプリケーション（エクイレクタングラーをキューブマップに変換）
+ * @author いけだじゅんじ (enhanced by Claude, updated by ChatGPT)
+ * @version 1
+ * @date 20250828
+ * @license Public Domain - 再配布、改変自由、一切の制限なし
+ * @disclaimer 
+ *   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+ *   IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY DAMAGES ARISING FROM THE USE OF THIS SOFTWARE.
+ *   このソフトウェアは無保証で提供され、作者は一切の責任を負いません。
+ *   - メモリ不足によるブラウザクラッシュの可能性があります
+ *   - 処理結果の品質は保証されません
+ *   - 重要なデータは事前にバックアップしてください
+ *   - 本ソフトウェアの使用は自己責任でお願いします
+ */
+-->
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>エクイレクタングラーをキューブマップに変換</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .input-group {
+            margin-bottom: 10px;
+        }
+        .status {
+            color: #666;
+            font-size: 0.9em;
+            margin-left: 10px;
+        }
+        .loaded {
+            color: green;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #result-container {
+            margin-top: 20px;
+        }
+        canvas {
+            max-width: 200px;
+            height: auto;
+            border: 1px solid #ddd;
+            margin: 5px;
+        }
+        .format-group {
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <h1>エクイレクタングラーをキューブマップに変換</h1>
+    <div>
+        <h2>エクイレクタングラー画像をアップロード</h2>
+            <img src="instraction2.jpg" alt="エクイレクタングラーからキューブマップへの変換模式図" style="max-width: 600px; height: auto;">
+        <p>画像は幅が4倍、高さが2倍の比率（例: 4096x2048）であることを推奨します</p>
+        <div class="input-group">
+            エクイレクタングラー画像: <input type="file" id="equirectangular-input" accept="image/*">
+            <span id="equirectangular-status" class="status">未選択</span>
+        </div>
+        <div class="format-group">
+            <h3>出力形式</h3>
+            <label><input type="radio" name="output-format" value="png" checked> PNG</label>
+            <label><input type="radio" name="output-format" value="jpeg"> JPEG</label>
+        </div>
+        <button id="convert-button" disabled>変換開始</button>
+    </div>
+    
+    <div>
+        <h2>変換結果</h2>
+        <div id="result-container"></div>
+    </div>
+
+    <script>
+        /**
+         * エクイレクタングラーからキューブマップに変換する関数
+         * @param {HTMLImageElement} equirectImage - エクイレクタングラー画像
+         * @param {number} faceSize - 各キューブマップ面のサイズ（正方形）
+         * @returns {Object} 6つのcanvas要素 {front, back, up, down, right, left}
+         */
+        function convertEquirectToCubemap(equirectImage, faceSize) {
+            const equirectWidth = equirectImage.width;
+            const equirectHeight = equirectImage.height;
+
+            // エクイレクタングラー画像をキャンバスに描画してピクセルデータを取得
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = equirectWidth;
+            tempCanvas.height = equirectHeight;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.drawImage(equirectImage, 0, 0);
+            const equirectData = tempCtx.getImageData(0, 0, equirectWidth, equirectHeight).data;
+
+            // 6つの面のキャンバスを作成
+            const faces = {
+                front: document.createElement('canvas'),
+                back: document.createElement('canvas'),
+                up: document.createElement('canvas'),
+                down: document.createElement('canvas'),
+                right: document.createElement('canvas'),
+                left: document.createElement('canvas')
+            };
+
+            for (const face of Object.values(faces)) {
+                face.width = faceSize;
+                face.height = faceSize;
+            }
+
+            const faceCtx = {
+                front: faces.front.getContext('2d'),
+                back: faces.back.getContext('2d'),
+                up: faces.up.getContext('2d'),
+                down: faces.down.getContext('2d'),
+                right: faces.right.getContext('2d'),
+                left: faces.left.getContext('2d')
+            };
+
+            // 各面にピクセルをマッピング
+            for (let faceName in faces) {
+                const ctx = faceCtx[faceName];
+                const imageData = ctx.createImageData(faceSize, faceSize);
+                const data = imageData.data;
+
+                for (let y = 0; y < faceSize; y++) {
+                    for (let x = 0; x < faceSize; x++) {
+                        const {nx, ny, nz} = getNormalizedCoordinates(faceName, x, y, faceSize);
+                        const {lat, lon} = cartesianToSpherical(nx, ny, nz);
+
+                        // エクイレクタングラー画像の座標に変換
+                        const equirectX = ((lon + Math.PI) / (2 * Math.PI)) * equirectWidth;
+                        const equirectY = ((Math.PI / 2 - lat) / Math.PI) * equirectHeight;
+
+                        const color = bilinearInterpolateEquirect(equirectData, equirectX, equirectY, equirectWidth, equirectHeight);
+                        const pixelIndex = (y * faceSize + x) * 4;
+                        data[pixelIndex] = color[0];
+                        data[pixelIndex + 1] = color[1];
+                        data[pixelIndex + 2] = color[2];
+                        data[pixelIndex + 3] = color[3];
+                    }
+                }
+                ctx.putImageData(imageData, 0, 0);
+            }
+
+            return faces;
+        }
+
+        /**
+         * キューブマップの面とピクセル座標から正規化された3D座標を取得
+         * @param {string} faceName - 面の名前 (front, back, up, down, right, left)
+         * @param {number} x - 面上のX座標
+         * @param {number} y - 面上のY座標
+         * @param {number} faceSize - 面のサイズ
+         * @returns {Object} 正規化された座標 {nx, ny, nz}
+         */
+        function getNormalizedCoordinates(faceName, x, y, faceSize) {
+            const u = (x / faceSize) * 2 - 1;
+            const v = (y / faceSize) * 2 - 1;
+
+            switch (faceName) {
+                case 'front': return { nx: u, ny: -v, nz: 1 };
+                case 'back': return { nx: -u, ny: -v, nz: -1 };
+                case 'up': return { nx: u, ny: 1, nz: v }; // 元のdownの座標
+                case 'down': return { nx: u, ny: -1, nz: -v }; // 元のupの座標
+                case 'right': return { nx: 1, ny: -v, nz: -u };
+                case 'left': return { nx: -1, ny: -v, nz: u };
+            }
+        }
+
+        /**
+         * 直交座標から球面座標（緯度・経度）に変換
+         * @param {number} x - X座標
+         * @param {number} y - Y座標
+         * @param {number} z - Z座標
+         * @returns {Object} 緯度と経度 {lat, lon}
+         */
+        function cartesianToSpherical(x, y, z) {
+            const r = Math.sqrt(x * x + y * y + z * z);
+            const lat = Math.asin(y / r); // 緯度
+            const lon = Math.atan2(x, z); // 経度
+            return { lat, lon };
+        }
+
+        /**
+         * エクイレクタングラー画像からバイリニア補間を使用してピクセル値を計算
+         * @param {Uint8ClampedArray} equirectData - エクイレクタングラー画像のピクセルデータ
+         * @param {number} x - X座標
+         * @param {number} y - Y座標
+         * @param {number} width - 画像の幅
+         * @param {number} height - 画像の高さ
+         * @returns {number[]} RGBA値
+         */
+        function bilinearInterpolateEquirect(equirectData, x, y, width, height) {
+            const x0 = Math.floor(x);
+            const y0 = Math.floor(y);
+            const x1 = Math.min(x0 + 1, width - 1);
+            const y1 = Math.min(y0 + 1, height - 1);
+
+            const xFrac = x - x0;
+            const yFrac = y - y0;
+
+            const idx00 = (y0 * width + x0) * 4;
+            const idx01 = (y0 * width + x1) * 4;
+            const idx10 = (y1 * width + x0) * 4;
+            const idx11 = (y1 * width + x1) * 4;
+
+            const color00 = [equirectData[idx00], equirectData[idx00 + 1], equirectData[idx00 + 2], equirectData[idx00 + 3]];
+            const color01 = [equirectData[idx01], equirectData[idx01 + 1], equirectData[idx01 + 2], equirectData[idx01 + 3]];
+            const color10 = [equirectData[idx10], equirectData[idx10 + 1], equirectData[idx10 + 2], equirectData[idx10 + 3]];
+            const color11 = [equirectData[idx11], equirectData[idx11 + 1], equirectData[idx11 + 2], equirectData[idx11 + 3]];
+
+            const result = [0, 0, 0, 0];
+            for (let i = 0; i < 4; i++) {
+                const top = color00[i] * (1 - xFrac) + color01[i] * xFrac;
+                const bottom = color10[i] * (1 - xFrac) + color11[i] * xFrac;
+                result[i] = Math.round(top * (1 - yFrac) + bottom * yFrac);
+            }
+
+            return result;
+        }
+
+        // ページの読み込みが完了したら実行
+        window.addEventListener('DOMContentLoaded', () => {
+            const fileInput = document.getElementById('equirectangular-input');
+            const statusElement = document.getElementById('equirectangular-status');
+            const convertButton = document.getElementById('convert-button');
+            const resultContainer = document.getElementById('result-container');
+
+            let equirectImage = null;
+
+            fileInput.addEventListener('change', function(e) {
+                if (e.target.files && e.target.files[0]) {
+                    const file = e.target.files[0];
+                    const img = new Image();
+
+                    img.onload = function() {
+                        equirectImage = img;
+                        statusElement.textContent = `ロード完了 (${img.width}x${img.height}px)`;
+                        statusElement.classList.add('loaded');
+                        convertButton.disabled = false;
+                    };
+
+                    img.onerror = function() {
+                        statusElement.textContent = '読み込みエラー';
+                        statusElement.classList.remove('loaded');
+                        equirectImage = null;
+                        convertButton.disabled = true;
+                    };
+
+                    try {
+                        const objectURL = URL.createObjectURL(file);
+                        img.src = objectURL;
+                        statusElement.textContent = '読み込み中...';
+                    } catch (error) {
+                        statusElement.textContent = 'エラー: 画像を選択できませんでした';
+                        statusElement.classList.remove('loaded');
+                        equirectImage = null;
+                        convertButton.disabled = true;
+                    }
+                } else {
+                    statusElement.textContent = '未選択';
+                    statusElement.classList.remove('loaded');
+                    equirectImage = null;
+                    convertButton.disabled = true;
+                }
+            });
+
+            convertButton.addEventListener('click', () => {
+                if (!equirectImage) return;
+
+                convertButton.disabled = true;
+                resultContainer.innerHTML = '<p>変換中... これには数秒から数分かかる場合があります。</p>';
+
+                setTimeout(() => {
+                    try {
+                        const faceSize = Math.floor(equirectImage.width / 4); // 幅の1/4を面のサイズとする
+                        const faces = convertEquirectToCubemap(equirectImage, faceSize);
+
+                        resultContainer.innerHTML = '';
+                        const outputFormat = document.querySelector('input[name="output-format"]:checked').value;
+                        const mimeType = outputFormat === 'png' ? 'image/png' : 'image/jpeg';
+                        const fileExtension = outputFormat === 'png' ? 'png' : 'jpg';
+
+                        for (const [faceName, canvas] of Object.entries(faces)) {
+                            const div = document.createElement('div');
+                            div.style.display = 'inline-block';
+                            div.style.textAlign = 'center';
+
+                            const label = document.createElement('p');
+                            label.textContent = faceName;
+                            div.appendChild(label);
+
+                            div.appendChild(canvas);
+
+                            const downloadBtn = document.createElement('button');
+                            downloadBtn.textContent = `${faceName} をダウンロード`;
+                            downloadBtn.onclick = () => {
+                                const link = document.createElement('a');
+                                link.download = `${faceName}.${fileExtension}`;
+                                link.href = canvas.toDataURL(mimeType, outputFormat === 'jpeg' ? 0.9 : undefined);
+                                link.click();
+                            };
+                            div.appendChild(downloadBtn);
+
+                            resultContainer.appendChild(div);
+                        }
+                    } catch (error) {
+                        console.error('変換中にエラーが発生しました:', error);
+                        resultContainer.innerHTML = `<p style="color: red;">エラーが発生しました: ${error.message}</p>`;
+                    } finally {
+                        convertButton.disabled = false;
+                    }
+                }, 100);
+            });
+        });
+    </script>
+</body>
+</html>
