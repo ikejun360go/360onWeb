@@ -1,30 +1,23 @@
 # 360 Image DEEP HACK 360onWeb
 
-360度パノラマ画像を「リトルプラネット」や「ラビットホール」スタイルに変換・編集できるWebアプリです。  
-ブラウザ上で完結し、画像をアップロードするだけで簡単に変換・ダウンロードできます。
+360イメージ（エクイレクタングラー）を変換・編集・閲覧できる一連のWebアプリシリーズです。  
+ブラウザ上で完結し、画像をアップロードするだけで簡単に利用できます。
 
-> A browser-based web app that transforms 360 equirectangular images into "Little Planet" or "Rabbit Hole" styles.  
+## Included Apps
+- **panoviewer.html** – 360度画像ビューア（詳細はファイル冒頭コメントを参照）
+- **360onWebS.html** – 高速版360画像エディタ（詳細はファイル冒頭コメントを参照）
+- **360onWebTW.html** – 高機能フィルター搭載版（詳細はファイル冒頭コメントを参照）
+- **equi2cube.html** – エクイレクタングラー → キューブ変換（詳細はファイル冒頭コメントを参照）
+- **equi2poly3.html** – エクイレクタングラー → 多面体変換（詳細はファイル冒頭コメントを参照）
+
+> A browser-based web app series to **transform, edit, and view** 360 equirectangular images.  
 > No installation required — simply upload and edit directly in your browser.
-
----
-
-## ✨ 主な機能 / Features
-
-- 360度画像の編集（Little Planet / Rabbit Hole）
-- ズーム、回転、上下・左右シフト、中心移動
-- プレビューサイズ（512px）と高解像度出力（2K / 4K）
-- PNG / JPEG出力
-- タッチ操作＆マウス操作対応
-- iPhone/iPad 対応（Safari最適化）
 
 ---
 
 ## 🚀 使用方法 / How to Use
 
-1. このリポジトリをクローンまたは [GitHub Pages](#) で開く
-2. `+360` ボタンから画像（equirectangular JPG/PNG）を選択
-3. スライダーで編集
-4. `📂 Download` で画像を保存
+このリポジトリをクローンまたは [GitHub Pages](https://yourusername.github.io/360onWeb/) で開く
 
 ※すべての処理はブラウザ内で完結します。画像はサーバーにアップロードされません。
 
@@ -34,15 +27,18 @@
 
 - HTML / CSS / JavaScript（Vanilla）
 - WebGL未使用（Canvasベース）
-- ライブラリ不使用・単一HTMLファイル構成
-- 生成AI Claude Sonnet 4 を用いて全コードを生成
+- **JSZipを使用（ZIP一括保存機能）**
+- 生成AI Claude Sonnet 4 と ChatGPT 5 を用いて全コードを生成
 
 ---
 
 ## 🧠 使用AIについて / About AI Used
 
-このアプリケーションのコードはすべて、Anthropic社の生成AI **Claude Sonnet 4** により生成されました。  
+このアプリケーションのコードは、Anthropic社の生成AI **Claude Sonnet 4** および OpenAI社製 **ChatGPT 5** により生成されました。  
 プロンプト設計および構成調整は人間（いけだじゅんじ）によって行われました。
+
+一部の改良（例：正二十面体の形状修正）はユーザからのフィードバックによるものです。  
+ご協力いただいた皆さまに感謝いたします。
 
 ---
 
@@ -56,5 +52,5 @@
 
 ## 🙋 作者 / Author
 
-いけだじゅんじ（Junji Ikeda）  
-ご連絡は GitHub または [X / Twitter](#) までどうぞ。
+いけだじゅんじ（Junji Ikeda） 
+ご連絡は GitHub までどうぞ。
