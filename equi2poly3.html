@@ -4,8 +4,8 @@
  * 
  * @description 360イメージを編集するWebアプリケーション（エクイレクタングラーを多面体に変換）
  * @author いけだじゅんじ (enhanced by Claude, updated by ChatGPT)
- * @version 1
- * @date 20250829
+ * @version 1.1
+ * @date 20250831
  * @license Public Domain - 再配布、改変自由、一切の制限なし
  * @disclaimer 
  *   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
@@ -15,15 +15,24 @@
  *   - 処理結果の品質は保証されません
  *   - 重要なデータは事前にバックアップしてください
  *   - 本ソフトウェアの使用は自己責任でお願いします
+ *
+ * 本アプリケーションは JSZip (https://stuk.github.io/jszip/) (MIT License) を利用しています
+ * 
+ * v 1.0 リリース
+ * v 1.1 正二十面体の各面の形状を修正（）
+ * Acknowledgements
+ * 正二十面体の各面形状の検証・改善に協力いただいたユーザーに感謝します 🙏
  */
 -->
 
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+<!-- 追加：ZIP生成ライブラリ -->
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Equirect → Cube / Icosahedron / Truncated Icosahedron Exporter</title>
+<title>Equirect → Cube / Icosahedron / Truncated Icosahedron Exporter v1.1</title>
 <style>
   :root{
     --bg1:#1e3c72; --bg2:#2a5298;
@@ -76,7 +85,7 @@
 </head>
 <body>
 <div class="container">
-  <h1>エクイレクタングラー → 正六面体／正二十面体／カクカク⚽️サッカーボール（切頂二十面体）変換</h1>
+  <h1>360エクイ → 正六面体／正二十面体／カクカク⚽️サッカーボール・切頂二十面体　変換 v1.1 </h1>
 
   <div class="row">
     <!-- 入力 -->
@@ -148,7 +157,7 @@
     </div>
 
     <div style="margin-top:12px;">
-      <button class="btn secondary" id="dlAllBtn">個別面を一括保存（ブラウザが順次保存）</button>
+      <button class="btn secondary" id="dlAllBtn">面を一括ZIP保存</button>
       <button class="btn" id="gridBtn">1枚タイルを生成</button>
       <a id="gridDownload" class="btn ghost" style="display:none;">タイル画像を保存</a>
       <div id="gridInfo" class="mini" style="margin-top:8px; opacity:.85;"></div>
@@ -258,11 +267,16 @@ function renderIcosaFace(equirectData, ew, eh, A, B, C, faceSize){
   const img = ctx.createImageData(faceSize, faceSize);
   const data = img.data;
 
-  const h = faceSize * Math.sqrt(3)/2;
-  const margin = Math.max(0, (faceSize - h)/2);
-  const ax = faceSize/2,         ay = margin;
-  const bx = (faceSize - h)/2,   by = margin + h;
-  const cx = (faceSize + h)/2,   cy = margin + h;
+  // 正三角形（side=faceSize）を正方形キャンバス内に内接させる
+  const side = faceSize;
+  const h = side * Math.sqrt(3) / 2;               // 正三角形の高さ
+  const marginY = Math.max(0, (faceSize - h) / 2); // 垂直方向センタリング
+
+  // 頂点座標（上：A、下左：B、下右：C）
+  const ax = faceSize / 2,        ay = marginY;
+  const bx = (faceSize - side) / 2, by = marginY + h;
+  const cx = (faceSize + side) / 2, cy = marginY + h;
+
 
   for(let py=0; py<faceSize; py++){
     for(let px=0; px<faceSize; px++){
@@ -775,6 +789,29 @@ function extFromMime(mime){
   return 'png';
 }
 
+// 追加：Canvas→Blob 変換（await対応）
+async function canvasToBlob(canvas, mime, quality){
+  return await new Promise(resolve => canvas.toBlob(resolve, mime, quality));
+}
+
+// 追加：ZIP化して1回のダウンロードで保存
+async function zipAndDownload(fileEntries, zipBaseName){
+  const zip = new JSZip();
+  for (const { path, blob } of fileEntries){
+    zip.file(path, blob);
+  }
+  const zipBlob = await zip.generateAsync({ type: 'blob' });
+  const url = URL.createObjectURL(zipBlob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${zipBaseName}.zip`;
+  a.click();
+  // 一定時間後にURL解放
+  setTimeout(()=> URL.revokeObjectURL(url), 10000);
+}
+
+
+
 function buildGridAndPreview(faces){
   if(!faces.length) return;
   const N = faces.length;
@@ -799,15 +836,31 @@ function buildGridAndPreview(faces){
 
   el.gridWrap.style.display = 'block';
   el.gridInfo.textContent = `タイル：${g.width} × ${g.height} px（${cols}×${rows}面）`;
+
+el.gridDownload.style.display = 'inline-block';
+el.gridDownload.textContent = 'タイルを保存';
+el.gridDownload.removeAttribute('onclick');
+
+el.gridDownload.onclick = async () => {
   const mime = el.fmt.value;
   const quality = parseFloat(el.qualityRange.value);
-  const url = (mime==='image/png') ? g.toDataURL(mime)
-                                   : g.toDataURL(mime, quality);
-  el.gridDownload.style.display = 'inline-block';
-  el.gridDownload.textContent = `タイルを${extFromMime(mime).toUpperCase()}保存`;
-  el.gridDownload.href = url;
-  el.gridDownload.download = `${el.prefix.value}${lastPoly}_grid.${extFromMime(mime)}`;
+  const ext = extFromMime(mime);
+  const prefix = el.prefix.value || '';
+  const blob = await canvasToBlob(g, mime, quality);
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${prefix}${lastPoly}_grid.${ext}`;
+  a.click();
+
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+};
 }
+
+
+
+
 
 /* --------- イベントバインド --------- */
 el.uploadArea.addEventListener('dragover', e=>{
@@ -876,22 +929,35 @@ el.clearBtn.addEventListener('click', ()=>{
   el.gridInfo.textContent = '';
 });
 
-el.dlAllBtn.addEventListener('click', ()=>{
+
+// ZIPでまとめて保存する仕様
+el.dlAllBtn.addEventListener('click', async ()=>{
   if(!lastFaces.length){ alert('先に変換を実行してください。'); return; }
+
   const mime = el.fmt.value;
   const quality = parseFloat(el.qualityRange.value);
   const ext = extFromMime(mime);
-  lastFaces.forEach(({name, canvas}, i)=>{
-    setTimeout(()=>{
-      const url = (mime==='image/png') ? canvas.toDataURL(mime)
-                                       : canvas.toDataURL(mime, quality);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${el.prefix.value}${name}.${ext}`;
-      a.click();
-    }, i*30);
-  });
+  const prefix = el.prefix.value || '';
+
+  // 個別面をZIPへ詰める
+  const files = [];
+  for (const { name, canvas } of lastFaces){
+    const blob = await canvasToBlob(canvas, mime, quality);
+    files.push({ path: `${prefix}${name}.${ext}`, blob });
+  }
+
+  // もしタイルがプレビュー済みなら、タイルも同梱
+  if (el.gridWrap.style.display === 'block'){
+    const gBlob = await canvasToBlob(el.gridCanvas, mime, quality);
+    files.push({ path: `${prefix}${lastPoly}_grid.${ext}`, blob: gBlob });
+  }
+
+  await zipAndDownload(files, `${prefix}${lastPoly}_all`);
 });
+
+
+
+
 
 el.gridBtn.addEventListener('click', ()=>{
   if(!lastFaces.length){ alert('先に変換を実行してください。'); return; }
