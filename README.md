@@ -17,7 +17,7 @@
 
 ## 🚀 使用方法 / How to Use
 
-このリポジトリをクローンまたは [GitHub Pages](https://yourusername.github.io/360onWeb/) で開く
+このリポジトリをクローンまたは [GitHub Pages](https://github.com/ikejun360go/360onWeb/) で開く
 
 ※すべての処理はブラウザ内で完結します。画像はサーバーにアップロードされません。
 
