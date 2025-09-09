@@ -9,6 +9,8 @@
 - **360onWebTW.html** – 高機能フィルター搭載版（詳細はファイル冒頭コメントを参照）
 - **equi2cube.html** – エクイレクタングラー → キューブ変換（詳細はファイル冒頭コメントを参照）
 - **equi2poly3.html** – エクイレクタングラー → 多面体変換（詳細はファイル冒頭コメントを参照）
+- **EMOJIin360.html** – 360度画像ビューア内にユーザ指定のEMOJIが降る（詳細はファイル冒頭コメントを参照）
+
 
 > A browser-based web app series to **transform, edit, and view** 360 equirectangular images.  
 > No installation required — simply upload and edit directly in your browser.
