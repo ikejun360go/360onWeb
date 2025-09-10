@@ -455,7 +455,7 @@ Changes in V1.4 (2025-09-10):
             var pinchDelta = cur - initialPinchDistance;
             var zoomSpeed = 0.05;
             camera.fov -= pinchDelta * zoomSpeed;
-            camera.fov = clamp(camera.fov, 30, 120);
+            camera.fov = clamp(camera.fov, 30, 150);
             camera.updateProjectionMatrix();
             initialPinchDistance = cur;
           }
