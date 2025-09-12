@@ -592,7 +592,8 @@ rotationSpeedY: (Math.random() * 0.02) * SPEED_FACTOR
 //    上限は createPumpkin() 内で守られます
 spawnBurst(INITIAL_BURST_COUNT);
 
-  euler = new THREE.Euler(0, Math.PI / 2, 0, 'YXZ');
+		// 初期表示位置の指定
+  euler = new THREE.Euler(Math.PI / 8, -Math.PI / 2, 0, 'YXZ');
   camera.quaternion.setFromEuler(euler);
 		
       window.addEventListener('resize', onWindowResize);
