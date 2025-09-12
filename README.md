@@ -9,7 +9,8 @@
 - **360onWebTW.html** – 高機能フィルター搭載版（詳細はファイル冒頭コメントを参照）
 - **equi2cube.html** – エクイレクタングラー → キューブ変換（詳細はファイル冒頭コメントを参照）
 - **equi2poly3.html** – エクイレクタングラー → 多面体変換（詳細はファイル冒頭コメントを参照）
-- **EMOJIin360.html** – 360度画像ビューア内にユーザ指定のEMOJIが降る（詳細はファイル冒頭コメントを参照）
+- **EMOJIin360.html** – 360度画像ビューア内にユーザ指定のEMOJIが舞う（詳細はファイル冒頭コメントを参照）
+- **Haiku360.html** – 360度画像ビューア内にユーザ指定の俳句が舞う（詳細はファイル冒頭コメントを参照）
 
 
 > A browser-based web app series to **transform, edit, and view** 360 equirectangular images.  
@@ -28,9 +29,12 @@
 ## 🛠 開発者向け / For Developers
 
 - HTML / CSS / JavaScript（Vanilla）
-- WebGL未使用（Canvasベース）
+- 360onWebS及び360onWebTWは、WebGL未使用（Canvasベース）
 - **JSZipを使用（ZIP一括保存機能）**
-- 生成AI Claude Sonnet 4 と ChatGPT 5 を用いて全コードを生成
+- 生成AI Claude Sonnet 4 と ChatGPT 5 とGrokを用いて全コードを生成
+- **WebGL（Three.js r128）**  
+  反転内貼りのスカイドーム（`SphereGeometry` + `BackSide`）にエクイレ投影をマッピング
+
 
 ---
 
