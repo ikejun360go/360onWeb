@@ -1,0 +1,777 @@
+
+<!--
+/**
+ * Haiku360 / 360° Panorama Viewer with Falling Haiku
+ * 
+ * @description 360度エクイレクタングラー画像を全天球表示し、テキスト/絵文字が内部で落下・回転する遊び用ビューワー
+ * @author いけだじゅんじ
+ *          + Contributors (Grok/xAI, ClaudeAI, ChatGPT 他のAIとユーザーの協働)
+ * @version v1.0
+ * @date 2025-09-12
+ * @license CC0 1.0 Universal (Public Domain)
+ *   この作品はパブリックドメイン（CC0）として提供されます。法的にパブリックドメインが
+ *   成立しない地域では、CC0に基づき、あらゆる目的での利用、改変、再配布を無条件で許諾します。
+ *   https://creativecommons.org/publicdomain/zero/1.0/
+ *
+ * @disclaimer 免責
+ *   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+ *   作者・貢献者は、本ソフトウェアの利用により生じたいかなる損害についても責任を負いません。
+ *   - 端末/ブラウザによってはメモリ不足・描画品質低下が起こる場合があります
+ *   - 画像品質や表示の正確性は保証されません
+ *   - 大切なデータは必ず事前にバックアップしてください
+ *   - 本ソフトウェアの使用は自己責任でお願いします
+ *
+ * @third-party-libraries
+ *   - three.js (MIT) など、外部ライブラリのライセンスは各プロジェクトに従います
+ *
+ * @contribution ガイドライン（簡易）
+ *   - CC0での改良歓迎。Issue/PRで挙動の再現手順や端末情報を書いてください
+ *   - 変更時は冒頭の CONFIG を更新し、コメントに「何を」「なぜ」変えたかを記述
+ *   - 大きな変更は Feature Flag（CONFIG）でON/OFF可能にする方針を推奨
+ *
+ * @known-issues 既知の注意点
+ *   - 古いiPhoneでiCloud最適化写真（未ダウンロード）の場合、読み込みに失敗することがあります
+ *     → 端末に「オリジナルをダウンロード」してから再試行してください
+ *   - 超高解像度画像は端末依存で縮小が発生することがあります
+ *   - テキスト描画は環境フォントに依存（同じ見た目にならない場合があります）
+ *
+ * @changelog 変更履歴（抜粋）
+ *   - v1.9: 冒頭に CONFIG を追加、POT正規化(4096x2048)・速度/発生の1/文字数スケーリング、バースト/上限の自動調整
+ *   - v1.8: 文字数で速度割り算（SPEED_FACTOR = 1/文字数）
+ *   - v1.7: 文字数で発生数を減衰（SPAWN_RATE_PER_SEC = BASE × 1/文字数）
+ *   - v1.6: 初期に10個バースト生成、操作終了後に自動回転復帰
+ *   - v1.5: 過剰増殖対策（時間基準スポーン＋上限厳守）、iPhone/iCloud対策維持
+ *
+ * @acknowledgements 謝辞
+ *   改良・検証・フィードバックを行ってくださる皆さまに感謝します 🙏
+ */
+-->
+
+<!--
+EMOJIin360 / 360° Panorama Viewer with Falling Emojis V1.5
+
+Changes in V1.5 (2025-09-11):
+- 絵文字の「過剰増殖」を根本対策
+  * 個数上限 PUMPKIN_MAX を厳守（超過時は古いものから間引き）
+  * setInterval を廃止し、animate() 内で「秒間生成率 SPAWN_PER_SEC」を時間基準で管理
+  * テクスチャ/マテリアル/ジオメトリを共有化（個別 Mesh の dispose 不要で安定）
+- 既存の iPhone / iCloud 対策（V1.4）を維持
+  * createImageBitmap 優先、fallback を HTMLImageElement + drawImage の一発描画
+  * 4096x2048（POT）へ正規化、左右反転、sRGBEncoding, mipmap/anisotropy 設定 など
+  
+  文字数が増えると読みにくいので、1/文字数としたが、1/17だと遅すぎたので、
+  var adjust = GLYPH_COUNT;
+    if (adjust > 5) {
+    adjust = 5;
+  }
+  とした
+  
+  
+-->
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=2.0, minimum-scale=0.5, user-scalable=yes" />
+  <title>EMOJIin360</title>
+  <style>
+    body { margin: 0; padding: 0; background: #000; font-family: Arial, sans-serif; overflow: hidden; }
+    #container { position: relative; width: 100vw; height: 100vh; }
+    #controls {
+      position: absolute; top: 20px; left: 20px; z-index: 100; color: white;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    #fileInput, #emojiInput, .btn {
+      padding: 8px; background: #444; color: white; border: none; border-radius: 5px; width: 200px;
+    }
+    #emojiInput { cursor: text; }
+    .row { display: flex; gap: 6px; }
+  </style>
+</head>
+<body>
+    <div id="container">
+  <div id="controls">
+  <input type="file" id="fileInput" accept="image/*" />
+  <input type="text" id="emojiInput" maxlength="17" placeholder="🎃❄️🍁など" />
+  <div style="display: flex; gap: 5px; margin-top: 5px;">
+    <button id="rotateLeft" style="padding: 8px; background: #444; color: white; border: none; border-radius: 5px; cursor: pointer;">◀</button>
+    <button id="rotateStop" style="padding: 8px; background: #444; color: white; border: none; border-radius: 5px; cursor: pointer;">■</button>
+    <button id="rotateRight" style="padding: 8px; background: #444; color: white; border: none; border-radius: 5px; cursor: pointer;">▶</button>
+  </div>
+</div>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+  
+  
+
+// ----------------------------
+// 起動時にランダムで表示する俳句リスト
+// ----------------------------
+  var haikuSamples = [
+ "湖面にも 映る紅葉の 空ひとつ",
+  "静けさに ひと葉流れて 秋深し",
+  "山紅葉 湖の色まで 染めにけり",
+  "渡り鳥 湖を渡り 雲も行く",
+  "風わたり 紅葉きらめく 水の面",
+  "秋風に 揺れるすすきの 野を越えて",
+  "赤とんぼ 湖を巡り 舞い遊ぶ",
+  "冷えし水 鴨の羽音に 揺れ広がる",
+  "夕映えの 山を背にして 湖眠る",
+  "月影を 湖に浮かべ 秋深む",
+  "紅葉散る 湖を染めて 風静か",
+  "山映えて 湖あかねの 秋の暮れ",
+  "木の葉舞い 水面きらめく 秋の陽よ",
+  "ひとしずく 湖に落ちて 広がりぬ",
+  "朝もやに 湖かすみて 秋の音",
+  "紅葉道 湖へ続く 光差す",
+  "秋の声 湖に渡る 鳥の群れ",
+  "夕暮れに 湖霞んで 鈴の音",
+  "静寂に 湖は映す 星ひとつ",
+  "秋雨や 湖を包む 響きあり",
+  "色づきて 湖のほとり 歩む道",
+  "渡りゆく 雲と鳥影 湖越え",
+  "秋の夜 湖に映る 月ひとつ",
+  "紅葉深く 湖の底に 染みわたる"
+  ];
+
+  // ランダムに1句選んで初期設定
+  function setRandomHaiku() {
+    var randomIndex = Math.floor(Math.random() * haikuSamples.length);
+    var haiku = haikuSamples[randomIndex];
+    var emojiInput = document.getElementById('emojiInput');
+    emojiInput.value = haiku;
+    currentEmoji = sliceGraphemes(haiku, 17); // 字素数制限で安全に
+    rebuildPumpkinSharedResources();
+    spawnBurst(INITIAL_BURST_COUNT);
+  }
+
+  
+// ----------------------------
+// 字素カウント（速度係数計算と統一）
+// ----------------------------
+function countGraphemes(str) {
+  if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+    var seg = new Intl.Segmenter('ja', { granularity: 'grapheme' });
+    var it = seg.segment(str)[Symbol.iterator]();
+    var n = 0; while (!it.next().done) n++;
+    return n;
+  }
+  return Array.from(str).length;
+}
+
+  
+  
+  
+  // ----------------------------
+// 字素カウント & 切り出し（最大17字素）
+// ----------------------------
+function sliceGraphemes(str, max) {
+  if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+    var seg = new Intl.Segmenter('ja', { granularity: 'grapheme' });
+    var it = seg.segment(str)[Symbol.iterator]();
+    var out = '', count = 0, step;
+    while (!(step = it.next()).done && count < max) {
+      out += step.value.segment;
+      count++;
+    }
+    return out;
+  }
+  // フォールバック（概ねサロゲートを壊さない）
+  return Array.from(str).slice(0, max).join('');
+}
+
+// 現在の字素数と速度係数
+var GLYPH_COUNT = 1;
+var SPEED_FACTOR = 1.0; // = 1 / GLYPH_COUNT
+  
+  
+    // --------------------------------------------
+    // グローバル
+    // --------------------------------------------
+    var scene, camera, renderer, sphere;
+    var pumpkins = []; // 個別 Mesh の配列（共有リソースを使う）
+    var isMouseDown = false;
+    var previousMousePosition = { x: 0, y: 0 };
+    var euler = new THREE.Euler(0, 0, 0, 'YXZ');
+    var initialPinchDistance = null;
+    var initialFov = 75;
+    var currentEmoji = '🎃';
+
+    // 自動回転
+    var autoRotationSpeed = 0; // 0=停止, 正=右回転, 負=左回転
+    var isUserInteracting = false;
+
+    // --------------------------------------------
+    // 4096x2048 正規化ユーティリティ
+    // --------------------------------------------
+    var TARGET_W = 4096;
+    var TARGET_H = 2048;
+
+    function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+
+    function computeCenterCrop2to1(imgW, imgH) {
+      var targetRatio = 2.0;
+      var srcRatio = imgW / imgH;
+      if (Math.abs(srcRatio - targetRatio) < 1e-4) {
+        return { sx: 0, sy: 0, sw: imgW, sh: imgH };
+      }
+      if (srcRatio > targetRatio) {
+        var sw = Math.floor(imgH * targetRatio);
+        var sx = Math.floor((imgW - sw) / 2);
+        return { sx: sx, sy: 0, sw: sw, sh: imgH };
+      } else {
+        var sh = Math.floor(imgW / targetRatio);
+        var sy = Math.floor((imgH - sh) / 2);
+        return { sx: 0, sy: sy, sw: imgW, sh: sh };
+      }
+    }
+
+    function drawToTargetCanvasFlipped(src, srcRectOrNull) {
+      var dstC = document.createElement('canvas');
+      dstC.width  = TARGET_W;
+      dstC.height = TARGET_H;
+      var dctx = dstC.getContext('2d', { willReadFrequently: false });
+      dctx.imageSmoothingEnabled = true;
+      try { dctx.imageSmoothingQuality = 'high'; } catch(e){}
+
+      dctx.scale(-1, 1); // 水平反転
+      if (srcRectOrNull) {
+        var r = srcRectOrNull;
+        dctx.drawImage(src, r.sx, r.sy, r.sw, r.sh, -TARGET_W, 0, TARGET_W, TARGET_H);
+      } else {
+        dctx.drawImage(src, 0, 0, src.width, src.height, -TARGET_W, 0, TARGET_W, TARGET_H);
+      }
+      return dstC;
+    }
+
+    function canvasToPOTTexture(canvas) {
+      var tex = new THREE.CanvasTexture(canvas);
+      tex.needsUpdate = true;
+      tex.generateMipmaps = true;
+      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.ClampToEdgeWrapping;
+      if (THREE.sRGBEncoding) tex.encoding = THREE.sRGBEncoding;
+
+      try {
+        var maxAniso = (renderer && renderer.capabilities && renderer.capabilities.getMaxAnisotropy)
+          ? renderer.capabilities.getMaxAnisotropy() : 1;
+        tex.anisotropy = Math.min(8, maxAniso);
+      } catch (e) {}
+      return tex;
+    }
+
+    function applyTextureToSphere(tex) {
+      if (sphere && sphere.material && sphere.material.map && typeof sphere.material.map.dispose === 'function') {
+        try { sphere.material.map.dispose(); } catch(e){}
+      }
+      if (sphere && sphere.material && typeof sphere.material.dispose === 'function') {
+        try { sphere.material.dispose(); } catch(e){}
+      }
+      sphere.material = new THREE.MeshBasicMaterial({
+        map: tex,
+        side: THREE.BackSide,
+        color: 0xffffff
+      });
+    }
+
+    // --------------------------------------------
+    // iPhone/古端末向け：Blob → Texture 生成（省メモリ優先）
+    // --------------------------------------------
+    async function fileToTexture(file) {
+      if (!file) throw new Error('no file');
+      if (!file.size) throw new Error('empty-file'); // iCloud最適化の未DL
+
+      if (typeof createImageBitmap === 'function') {
+        try {
+          var tmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+          var w = tmp.width, h = tmp.height;
+          try { tmp.close(); } catch(e){}
+
+          var crop = computeCenterCrop2to1(w, h);
+          var bmp = await createImageBitmap(
+            file,
+            crop.sx, crop.sy, crop.sw, crop.sh,
+            { resizeWidth: TARGET_W, resizeHeight: TARGET_H, imageOrientation: 'from-image', resizeQuality: 'high' }
+          );
+
+          var dstC = document.createElement('canvas');
+          dstC.width = TARGET_W; dstC.height = TARGET_H;
+          var dctx = dstC.getContext('2d');
+          dctx.scale(-1, 1);
+          dctx.drawImage(bmp, 0, 0, TARGET_W, TARGET_H, -TARGET_W, 0, TARGET_W, TARGET_H);
+          try { bmp.close(); } catch(e){}
+
+          return canvasToPOTTexture(dstC);
+        } catch (e) {
+          console.warn('[createImageBitmap] fallback to HTMLImageElement path:', e);
+        }
+      }
+
+      var url = URL.createObjectURL(file);
+      try {
+        var img = await new Promise(function(resolve, reject){
+          var image = new Image();
+          image.onload = function(){ resolve(image); };
+          image.onerror = function(err){ reject(err); };
+          image.src = url;
+        });
+
+        var crop2 = computeCenterCrop2to1(img.width, img.height);
+        var dst = drawToTargetCanvasFlipped(img, crop2);
+        return canvasToPOTTexture(dst);
+      } finally {
+        try { URL.revokeObjectURL(url); } catch(e){}
+      }
+    }
+
+    // --------------------------------------------
+    // 絵文字（落下物）共有リソースと生成制御
+    // --------------------------------------------
+   
+var pumpkinSharedTex = null;
+var pumpkinSharedMat = null;
+var pumpkinSharedGeo = null;
+
+var BASE_PUMPKIN_MAX    = 200; // 個数上限の基準値
+var PUMPKIN_MAX_EFFECTIVE = 200; // 実効上限（= 基準値 × 1/文字数）
+var SPAWN_BASE_PER_SEC  = 1.5;   // 基準の生成数 [個/秒]
+var SPAWN_RATE_PER_SEC  = 1.5;   // 実効生成数（= 基準 × 1/文字数）
+
+var INITIAL_BURST_COUNT = 5;  // 初期＆文字列変更直後のバースト
+var _autoResumeTimer    = null; // 自動回転復帰用タイマー
+
+var _spawnAccum = 0;
+var _clock      = new THREE.Clock();
+
+// 初期/再構築時にまとめて複数生成
+function spawnBurst(count) {
+	// 有効上限を超えないように丸める
+	var canSpawn = Math.max(0, (PUMPKIN_MAX_EFFECTIVE || 0) - pumpkins.length);
+	var n = Math.min(count, canSpawn);
+	for (var i = 0; i < n; i++) {
+	  createPumpkin();
+	}
+}
+
+    function rebuildPumpkinSharedResources() {
+      // 0) 入力文字を17字素に丸め込む
+
+
+currentEmoji = sliceGraphemes(currentEmoji && currentEmoji.length ? currentEmoji : '🎃', 17);
+// 1) 現在の字素数と速度係数・発生レートを再計算
+//    速度係数：1/文字数、発生レート：SPAWN_BASE_PER_SEC × 1/文字数
+//    例：1文字=1, 2文字=1/2, 17文字=1/17
+GLYPH_COUNT  = Math.max(1, countGraphemes(currentEmoji));
+
+var adjust = GLYPH_COUNT;
+if (adjust > 5) {
+adjust = 5;
+}
+
+SPEED_FACTOR = 1.0 / adjust;
+
+SPAWN_RATE_PER_SEC = SPAWN_BASE_PER_SEC * (1.0 / GLYPH_COUNT);
+
+// ★ 上限も 1/文字数 に比例させる（単純法）
+//   例：200/1=200個, 200/2=100個, 200/17=11個
+PUMPKIN_MAX_EFFECTIVE = Math.floor(BASE_PUMPKIN_MAX / GLYPH_COUNT);
+
+// 2) Canvasで絵文字描画（共有テクスチャ）
+//    幅は length * 係数 ではなく、必ず measureText() で実測する（欠け防止）
+var dpr = (window.devicePixelRatio || 1);
+var fontSize = 48;                  // CSS px
+var padding  = 12;                  // 左右上下の余白（CSS px）
+// 計測用コンテキスト
+var measureC = document.createElement('canvas');
+var mctx = measureC.getContext('2d');
+mctx.font = fontSize + 'px Arial';
+mctx.textAlign = 'center';
+mctx.textBaseline = 'middle';
+var metrics = mctx.measureText(currentEmoji);
+var textW = metrics.width;
+var textH = fontSize * 1.2;         // 概ね行高
+var cssW  = Math.max(64, Math.ceil(textW + padding * 2));
+var cssH  = Math.max(64, Math.ceil(textH + padding * 2));
+
+var canvas = document.createElement('canvas');
+canvas.width  = Math.max(1, Math.floor(cssW * dpr));  // 物理解像度
+canvas.height = Math.max(1, Math.floor(cssH * dpr));
+var context = canvas.getContext('2d');
+context.scale(dpr, dpr);            // CSS座標系で描く
+context.clearRect(0, 0, cssW, cssH);
+context.font = fontSize + 'px Arial';
+context.fillStyle = 'white';
+context.textAlign = 'center';
+context.textBaseline = 'middle';
+context.fillText(currentEmoji, cssW / 2, cssH / 2);
+
+
+      // 3) 共有テクスチャ
+      if (pumpkinSharedTex) { try { pumpkinSharedTex.dispose(); } catch(e){} }
+      pumpkinSharedTex = new THREE.CanvasTexture(canvas);
+      pumpkinSharedTex.needsUpdate = true;
+      pumpkinSharedTex.generateMipmaps = false; // NPOT
+      pumpkinSharedTex.minFilter = THREE.LinearFilter;
+      pumpkinSharedTex.magFilter = THREE.LinearFilter;
+      pumpkinSharedTex.wrapS = THREE.ClampToEdgeWrapping;
+      pumpkinSharedTex.wrapT = THREE.ClampToEdgeWrapping;
+      if (THREE.sRGBEncoding) pumpkinSharedTex.encoding = THREE.sRGBEncoding;
+
+      // 4) 共有マテリアル
+      if (pumpkinSharedMat) { try { pumpkinSharedMat.dispose(); } catch(e){} }
+      pumpkinSharedMat = new THREE.MeshBasicMaterial({
+        map: pumpkinSharedTex,
+        transparent: true,
+        side: THREE.DoubleSide
+      });
+
+// 5) 共有ジオメトリ：テクスチャのアスペクトに正確に合わせる（欠け防止）
+var aspect = cssW / cssH;           // CSS寸法ベースのアスペクト
+var planeH = 3.0;                   // 高さは従来通り
+var planeW = Math.max(3, planeH * aspect);
+      if (pumpkinSharedGeo) { try { pumpkinSharedGeo.dispose(); } catch(e){} }
+      pumpkinSharedGeo = new THREE.PlaneGeometry(planeW, planeH);
+    }
+
+    function createPumpkin() {
+      if (!pumpkinSharedTex || !pumpkinSharedMat || !pumpkinSharedGeo) {
+        rebuildPumpkinSharedResources();
+      }
+
+      // 上限厳守：超過なら最古の1個を間引く
+      if (pumpkins.length >= PUMPKIN_MAX_EFFECTIVE) {
+        var old = pumpkins.shift();
+        scene.remove(old);
+        // 共有リソースなので、old.material/geometry の dispose は不要
+      }
+
+      var pumpkin = new THREE.Mesh(pumpkinSharedGeo, pumpkinSharedMat);
+
+      pumpkin.position.set(
+        (Math.random() - 0.5) * 80,
+        40 + Math.random() * 20,
+        (Math.random() - 0.5) * 80
+      );
+      pumpkin.userData = {
+        velocity: new THREE.Vector3(
+//          (Math.random() - 0.5) * 0.02,
+//          -0.1 - Math.random() * 0.06,
+//          (Math.random() - 0.5) * 0.02
+          
+          
+((Math.random() - 0.5) * 0.02) * SPEED_FACTOR,
+(-0.1 - Math.random() * 0.06) * SPEED_FACTOR,
+((Math.random() - 0.5) * 0.02) * SPEED_FACTOR
+          
+        ),
+rotationSpeedX: (Math.random() * 0.02) * SPEED_FACTOR,
+rotationSpeedY: (Math.random() * 0.02) * SPEED_FACTOR
+      };
+
+      scene.add(pumpkin);
+      pumpkins.push(pumpkin);
+    }
+
+    function updatePumpkins() {
+      for (var i = pumpkins.length - 1; i >= 0; i--) {
+        var pumpkin = pumpkins[i];
+        pumpkin.position.add(pumpkin.userData.velocity);
+        pumpkin.rotation.x += pumpkin.userData.rotationSpeedX;
+        pumpkin.rotation.y += pumpkin.userData.rotationSpeedY;
+
+        // 球体の下限
+        if (pumpkin.position.y < -40) {
+          scene.remove(pumpkin);
+          pumpkins.splice(i, 1);
+          continue;
+        }
+
+        // 内球壁での反射
+        var distance = pumpkin.position.length();
+        if (distance > 45) {
+          var normal = pumpkin.position.clone().normalize();
+          pumpkin.userData.velocity.reflect(normal);
+          pumpkin.userData.velocity.multiplyScalar(0.7);
+          pumpkin.position.copy(normal.multiplyScalar(45));
+        }
+      }
+    }
+
+    // --------------------------------------------
+    // UI：自動回転
+    // --------------------------------------------
+    function setupAutoRotation() {
+      var rotateLeft  = document.getElementById('rotateLeft');
+      var rotateStop  = document.getElementById('rotateStop');
+      var rotateRight = document.getElementById('rotateRight');
+
+      rotateLeft.addEventListener('click', function() {
+        autoRotationSpeed = -0.001;
+        isUserInteracting = false;
+      });
+      rotateStop.addEventListener('click', function() {
+        autoRotationSpeed = 0;
+        isUserInteracting = false;
+      });
+      rotateRight.addEventListener('click', function() {
+        autoRotationSpeed = 0.001;
+        isUserInteracting = false;
+      });
+    }
+
+    // --------------------------------------------
+    // 初期化
+    // --------------------------------------------
+    function init() {
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(initialFov, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.set(0, 0, 0);
+
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        powerPreference: 'high-performance',
+        preserveDrawingBuffer: false
+      });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      if (renderer.outputEncoding !== undefined) {
+        renderer.outputEncoding = THREE.sRGBEncoding;
+      }
+      renderer.setPixelRatio(window.devicePixelRatio || 1);
+      document.getElementById('container').appendChild(renderer.domElement);
+
+      var geometry = new THREE.SphereGeometry(50, 64, 32);
+      var material = new THREE.MeshBasicMaterial({ side: THREE.BackSide, color: 0x333333 });
+      sphere = new THREE.Mesh(geometry, material);
+      scene.add(sphere);
+
+      var ambientLight = new THREE.AmbientLight(0xffffff, 1);
+      scene.add(ambientLight);
+
+      // sample.jpg を貼る（HTMLImageElement経由）
+      var loader = new THREE.TextureLoader();
+      loader.load(
+        './sample.jpg',
+        function(texture) {
+          try {
+            var img = texture.image;
+            var crop = computeCenterCrop2to1(img.width, img.height);
+            var dst = drawToTargetCanvasFlipped(img, crop);
+            var potTex = canvasToPOTTexture(dst);
+            applyTextureToSphere(potTex);
+	      	// 初期表示でも右回転スタート
+	      	autoRotationSpeed = 0.001;
+	      	isUserInteracting = false;            
+            
+          } catch (e) {
+            console.error('sample.jpg 正規化に失敗:', e);
+          }
+        },
+        undefined,
+        function(err) {
+          console.error('sample.jpgの読み込みに失敗しました:', err);
+          alert('sample.jpgの読み込みに失敗しました。デフォルトの灰色表示になります。');
+        }
+      );
+
+      setupMouseEvents();
+      setupEmojiInput();
+      setupAutoRotation();
+
+      // ★ 絵文字共有リソースを初期構築
+      rebuildPumpkinSharedResources();
+      
+    // ★ ランダム俳句を初期値にセット
+    setRandomHaiku();      
+      
+// ★ 文字数が多くても最初に賑やかに見せるための初期バースト
+//    上限は createPumpkin() 内で守られます
+spawnBurst(INITIAL_BURST_COUNT);
+
+
+      window.addEventListener('resize', onWindowResize);
+      // setInterval 等の周期生成は廃止。animate() 内で時間基準生成に変更。
+      animate();
+    }
+
+    // --------------------------------------------
+    // 絵文字入力：変更時に全削除→共有リソースを再構築
+    // --------------------------------------------
+    function setupEmojiInput() {
+      var emojiInput = document.getElementById('emojiInput');
+      emojiInput.addEventListener('input', function () {
+      	
+        var input = emojiInput.value.trim();
+        currentEmoji = sliceGraphemes(input.length > 0 ? input : '🎃', 17);
+
+        // 既存メッシュを全て外す（共有リソースは再構築）
+        for (var i = pumpkins.length - 1; i >= 0; i--) {
+          scene.remove(pumpkins[i]);
+        }
+        pumpkins.length = 0;
+
+        rebuildPumpkinSharedResources();
+        
+// 変更直後にも見栄えを確保
+spawnBurst(INITIAL_BURST_COUNT);        
+      });
+    }
+
+    // --------------------------------------------
+    // ファイル読み込み
+    // --------------------------------------------
+    document.getElementById('fileInput').addEventListener('change', function (event) {
+      var file = event.target.files && event.target.files[0];
+      if (!file) return;
+
+      if (!file.size) {
+        alert('この写真はiCloud上にあり、端末にオリジナルがありません。\n写真アプリで一度「オリジナルをダウンロード」してから再度選択してください。');
+        return;
+      }
+
+      fileToTexture(file).then(function(tex){
+        applyTextureToSphere(tex);
+        
+		  // 読み込み完了後に右回転スタート
+		  autoRotationSpeed = 0.001;
+		  isUserInteracting = false;  
+      }).catch(function(err){
+        console.error('ファイル読み込み/変換に失敗:', err);
+        alert('画像の読み込みに失敗しました。写真アプリで「オリジナルをダウンロード」し、\n選択時に小サイズではなく元のサイズをお試しください。');
+      });
+    });
+
+    // --------------------------------------------
+    // 入力（マウス/タッチ）
+    // --------------------------------------------
+    function setupMouseEvents() {
+      var canvas = renderer.domElement;
+
+      canvas.addEventListener('mousedown', function(event) {
+        isMouseDown = true;
+        isUserInteracting = true;
+        autoRotationSpeed = 0;
+        previousMousePosition = { x: event.clientX, y: event.clientY };
+      });
+
+canvas.addEventListener('mouseup', function() {
+  isMouseDown = false;
+  // 一定時間入力がなければ自動回転を復帰
+  if (_autoResumeTimer) { clearTimeout(_autoResumeTimer); }
+  _autoResumeTimer = setTimeout(function(){
+    isUserInteracting = false;
+  }, 1200); // 1.2秒アイドルで復帰
+});
+
+      canvas.addEventListener('mousemove', function(event) {
+        if (!isMouseDown) return;
+        var deltaX = event.clientX - previousMousePosition.x;
+        var deltaY = event.clientY - previousMousePosition.y;
+        euler.y -= deltaX * 0.005;
+        euler.x -= deltaY * 0.005;
+        euler.x = clamp(euler.x, -Math.PI / 2, Math.PI / 2);
+        camera.quaternion.setFromEuler(euler);
+        previousMousePosition = { x: event.clientX, y: event.clientY };
+      });
+
+      canvas.addEventListener('wheel', function(event) {
+        event.preventDefault();
+        var zoomSpeed = 0.1;
+        camera.fov += event.deltaY * zoomSpeed;
+        camera.fov = clamp(camera.fov, 30, 120);
+        camera.updateProjectionMatrix();
+      }, { passive: false });
+
+      canvas.addEventListener('touchstart', function(event) {
+        event.preventDefault();
+        isUserInteracting = true;
+        autoRotationSpeed = 0;
+
+        if (event.touches.length === 1) {
+          isMouseDown = true;
+          var t = event.touches[0];
+          previousMousePosition = { x: t.clientX, y: t.clientY };
+        } else if (event.touches.length === 2) {
+          var t1 = event.touches[0], t2 = event.touches[1];
+          initialPinchDistance = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        }
+      }, { passive: false });
+
+      canvas.addEventListener('touchend', function(event) {
+        event.preventDefault();
+        isMouseDown = false;
+        initialPinchDistance = null;
+// タッチ終了後も少し待って自動回転復帰
+if (_autoResumeTimer) { clearTimeout(_autoResumeTimer); }
+_autoResumeTimer = setTimeout(function(){
+  isUserInteracting = false;
+}, 1200);        
+      }, { passive: false });
+
+      canvas.addEventListener('touchmove', function(event) {
+        event.preventDefault();
+        if (event.touches.length === 1 && isMouseDown) {
+          var t = event.touches[0];
+          var deltaX = t.clientX - previousMousePosition.x;
+          var deltaY = t.clientY - previousMousePosition.y;
+          euler.y -= deltaX * 0.005;
+          euler.x -= deltaY * 0.005;
+          euler.x = clamp(euler.x, -Math.PI / 2, Math.PI / 2);
+          camera.quaternion.setFromEuler(euler);
+          previousMousePosition = { x: t.clientX, y: t.clientY };
+        } else if (event.touches.length === 2) {
+          var a = event.touches[0], b = event.touches[1];
+          var cur = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+          if (initialPinchDistance !== null) {
+            var pinchDelta = cur - initialPinchDistance;
+            var zoomSpeed = 0.05;
+            camera.fov -= pinchDelta * zoomSpeed;
+            camera.fov = clamp(camera.fov, 30, 150);
+            camera.updateProjectionMatrix();
+            initialPinchDistance = cur;
+          }
+        }
+      }, { passive: false });
+    }
+
+    // --------------------------------------------
+    // リサイズ
+    // --------------------------------------------
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // --------------------------------------------
+    // ループ（時間基準スポーン＋上限厳守）
+    // --------------------------------------------
+    function animate() {
+      requestAnimationFrame(animate);
+
+      if (!isUserInteracting && autoRotationSpeed !== 0) {
+        euler.y += autoRotationSpeed;
+        camera.quaternion.setFromEuler(euler);
+      }
+
+      // 経過時間に応じてスポーン
+      var dt = _clock.getDelta();
+      _spawnAccum += dt * SPAWN_RATE_PER_SEC; // ★ 文字数で減衰した実効レート
+      while (_spawnAccum >= 1.0) {
+        _spawnAccum -= 1.0;
+        createPumpkin();
+      }
+
+      updatePumpkins();
+      renderer.render(scene, camera);
+    }
+
+    // 起動
+    init();
+  </script>
+</body>
+</html>
