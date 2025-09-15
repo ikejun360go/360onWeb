@@ -1,4 +1,3 @@
-
 <!--
 /**
  * Haiku360 / 360° Panorama Viewer with Falling Haiku
@@ -8,7 +7,7 @@
  *          + Contributors (Grok/xAI, ClaudeAI, ChatGPT 他のAIとユーザーの協働)
  * @version v1.0
  * @date 2025-09-12
- * @license CC0 1.0 Universal (Public Domain)
+ * @license CC0 2.0 Universal (Public Domain)
  *   この作品はパブリックドメイン（CC0）として提供されます。法的にパブリックドメインが
  *   成立しない地域では、CC0に基づき、あらゆる目的での利用、改変、再配布を無条件で許諾します。
  *   https://creativecommons.org/publicdomain/zero/1.0/
@@ -36,6 +35,7 @@
  *   - テキスト描画は環境フォントに依存（同じ見た目にならない場合があります）
  *
  * @changelog 変更履歴（抜粋）
+ *   - v2.0: 所定の俳句サンプルでなく、５７５それぞれに12ずつ用意しランダム俳句サンプル作成仕様とした
  *   - v1.9: 冒頭に CONFIG を追加、POT正規化(4096x2048)・速度/発生の1/文字数スケーリング、バースト/上限の自動調整
  *   - v1.8: 文字数で速度割り算（SPEED_FACTOR = 1/文字数）
  *   - v1.7: 文字数で発生数を減衰（SPAWN_RATE_PER_SEC = BASE × 1/文字数）
@@ -59,23 +59,60 @@ Changes in V1.5 (2025-09-11):
   * createImageBitmap 優先、fallback を HTMLImageElement + drawImage の一発描画
   * 4096x2048（POT）へ正規化、左右反転、sRGBEncoding, mipmap/anisotropy 設定 など
   
-  文字数が増えると読みにくいので、1/文字数としたが、1/17だと遅すぎたので、
+  文字数が増えると読みにくいので、1/文字数としたが、1/19だと遅すぎたので、
   var adjust = GLYPH_COUNT;
     if (adjust > 5) {
     adjust = 5;
   }
   とした
+ 以下は、20250914の更新 
+function  createPumpkin()
+        let count = GLYPH_COUNT;
+        var isRotateX = 1.0;
+        if (GLYPH_COUNT > 5) {
+            isRotateX = 0.0;
+        }
+        として
+         pumpkin.userData = {
+        velocity: new THREE.Vector3(
+            ((Math.random() - 0.5) * 0.02) * SPEED_FACTOR,
+            (-0.1 - Math.random() * 0.06) * SPEED_FACTOR,
+            ((Math.random() - 0.5) * 0.02) * SPEED_FACTOR
+        ),
+            rotationSpeedX: (Math.random() * 0.02) * SPEED_FACTOR * isRotateX,
+            rotationSpeedY: (Math.random() * 0.02) * SPEED_FACTOR
+      };
+      で、X成分に０か１を乗じて、5文字以上の場合、Y軸のみの回転とし読みやすくした
   
-  
+  字余りを考慮し、５７５＋２＝19文字を最大とする仕様に変更
 -->
 
 <!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
+  
+  <!-- アイコン関連の追加 -->
+<link rel="icon" type="image/x-icon" href="haiku360/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="haiku360/32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="haiku360/16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="haiku360/180x180.png">
+<link rel="manifest" href="/site.webmanifest">
+
+<!-- Web App Manifest用の追加設定 -->
+<meta name="theme-color" content="#1e3c72">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Haiku360">
+
+<!-- Androidでホーム画面に追加可能にする -->
+<meta name="mobile-web-app-capable" content="yes">
+<!-- アプリの名前（Androidのホーム画面での表示名） -->
+<meta name="application-name" content="Haiku360">
+   
   <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=2.0, minimum-scale=0.5, user-scalable=yes" />
-  <title>EMOJIin360</title>
+  <title>Haiku360</title>
   <style>
     body { margin: 0; padding: 0; background: #000; font-family: Arial, sans-serif; overflow: hidden; }
     #container { position: relative; width: 100vw; height: 100vh; }
@@ -94,7 +131,7 @@ Changes in V1.5 (2025-09-11):
     <div id="container">
   <div id="controls">
   <input type="file" id="fileInput" accept="image/*" />
-  <input type="text" id="emojiInput" maxlength="17" placeholder="🎃❄️🍁など" />
+  <input type="text" id="emojiInput" maxlength="19" placeholder="🎃❄️🍁など" />
   <div style="display: flex; gap: 5px; margin-top: 5px;">
     <button id="rotateLeft" style="padding: 8px; background: #444; color: white; border: none; border-radius: 5px; cursor: pointer;">◀</button>
     <button id="rotateStop" style="padding: 8px; background: #444; color: white; border: none; border-radius: 5px; cursor: pointer;">■</button>
@@ -105,7 +142,90 @@ Changes in V1.5 (2025-09-11):
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script>
   
+  // 360カメラ俳句のランダム組み合わせ生成システム
+
+// 初句（5音）- 360カメラ・360イメージを想起するフレーズ
+const firstLines = [
+  "全天球",      // ぜんてんきゅう
+  "球面に",      // きゅうめんに  
+  "パノラマの",    // パノラマの
+  "全方位",      // ぜんほうい
+  "三六〇",      // さんろくまる
+  "球体で",      // きゅうたいで
+  "立体に",      // りったいに
+  "丸い世の",    // まるいよの
+  "包まれて",    // つつまれて
+  "死角ない"       // しかくない
+];
+
+// 中句（7音）- 抽象的な心情を表す情景
+const secondLines = [
+  "想いが巡る",    // おもいがめぐる
+  "記憶よみがえる", // きおくよみがえる
+  "心踊って",    // こころおどって
+  "夢がひろがり",  // ゆめがひろがり
+  "心あふれて",    // こころあふれて
+  "魂震え",      // たましいふるえ
+  "想いが浮かぶ",  // おもいがうかぶ
+  "希望が宿り",    // きぼうがやどり
+  "愛が満ちゆく",    // あいがみちゆく
+  "時が止まるる"     // ときがとまるる
+];
+
+// 結句（5音）- 感動・余韻
+const thirdLines = [
+  "美しさ",    // うつくしさ
+  "安らぎに",    // やすらぎに
+  "風涼し",      // かぜすずし
+  "幸せに",      // しあわせに
+  "感謝して",    // かんしゃして
+  "微笑みて",    // ほほえみて
+  "静寂かな",    // せいじゃくかな
+  "愛おしさ",    // いとおしさ
+  "今もなお",    // いまもなお
+  "永遠に"       // えいえんに
+];
+
+// ランダムに俳句を生成する関数
+function generateRandomHaiku() {
+  const firstIndex = Math.floor(Math.random() * firstLines.length);
+  const secondIndex = Math.floor(Math.random() * secondLines.length);  
+  const thirdIndex = Math.floor(Math.random() * thirdLines.length);
   
+  const first = firstLines[firstIndex];
+  const second = secondLines[secondIndex];
+  const third = thirdLines[thirdIndex];
+  
+  return `${first} ${second} ${third}`;
+}
+// ----------------------------
+// 起動時にランダムで表示する俳句リスト
+// ----------------------------
+
+// 既存の関数に組み込む形式
+function setRandomHaiku4096() {
+  var haiku = generateRandomHaiku();
+  var emojiInput = document.getElementById('emojiInput');
+  emojiInput.value = haiku;
+  currentEmoji = sliceGraphemes(haiku, 19); // 字素数制限で安全に
+  rebuildPumpkinSharedResources();
+  spawnBurst(INITIAL_BURST_COUNT);
+}
+
+// 複数の俳句を一度に生成したい場合の関数
+function generateMultipleHaiku(count = 5) {
+  const haikus = [];
+  for (let i = 0; i < count; i++) {
+    haikus.push(generateRandomHaiku());
+  }
+  return haikus;
+}
+
+// 使用例とテスト
+console.log("生成された俳句の例:");
+for (let i = 0; i < 5; i++) {
+  console.log((i + 1) + ". " + generateRandomHaiku());
+}
 
 // ----------------------------
 // 起動時にランダムで表示する俳句リスト
@@ -143,7 +263,7 @@ Changes in V1.5 (2025-09-11):
     var haiku = haikuSamples[randomIndex];
     var emojiInput = document.getElementById('emojiInput');
     emojiInput.value = haiku;
-    currentEmoji = sliceGraphemes(haiku, 17); // 字素数制限で安全に
+    currentEmoji = sliceGraphemes(haiku, 19); // 字素数制限で安全に
     rebuildPumpkinSharedResources();
     spawnBurst(INITIAL_BURST_COUNT);
   }
@@ -166,7 +286,7 @@ function countGraphemes(str) {
   
   
   // ----------------------------
-// 字素カウント & 切り出し（最大17字素）
+// 字素カウント & 切り出し（最大19字素）
 // ----------------------------
 function sliceGraphemes(str, max) {
   if (typeof Intl !== 'undefined' && Intl.Segmenter) {
@@ -359,13 +479,13 @@ function spawnBurst(count) {
 }
 
     function rebuildPumpkinSharedResources() {
-      // 0) 入力文字を17字素に丸め込む
+      // 0) 入力文字を19字素に丸め込む
 
 
-currentEmoji = sliceGraphemes(currentEmoji && currentEmoji.length ? currentEmoji : '🎃', 17);
+currentEmoji = sliceGraphemes(currentEmoji && currentEmoji.length ? currentEmoji : '🎃', 19);
 // 1) 現在の字素数と速度係数・発生レートを再計算
 //    速度係数：1/文字数、発生レート：SPAWN_BASE_PER_SEC × 1/文字数
-//    例：1文字=1, 2文字=1/2, 17文字=1/17
+//    例：1文字=1, 2文字=1/2, 19文字=1/19
 GLYPH_COUNT  = Math.max(1, countGraphemes(currentEmoji));
 
 var adjust = GLYPH_COUNT;
@@ -378,7 +498,7 @@ SPEED_FACTOR = 1.0 / adjust;
 SPAWN_RATE_PER_SEC = SPAWN_BASE_PER_SEC * (1.0 / GLYPH_COUNT);
 
 // ★ 上限も 1/文字数 に比例させる（単純法）
-//   例：200/1=200個, 200/2=100個, 200/17=11個
+//   例：200/1=200個, 200/2=100個, 200/19=11個
 PUMPKIN_MAX_EFFECTIVE = Math.floor(BASE_PUMPKIN_MAX / GLYPH_COUNT);
 
 // 2) Canvasで絵文字描画（共有テクスチャ）
@@ -439,6 +559,11 @@ var planeW = Math.max(3, planeH * aspect);
     }
 
     function createPumpkin() {
+        let count = GLYPH_COUNT;
+        var isRotateX = 1.0;
+        if (GLYPH_COUNT > 5) {
+            isRotateX = 0.0;
+        }
       if (!pumpkinSharedTex || !pumpkinSharedMat || !pumpkinSharedGeo) {
         rebuildPumpkinSharedResources();
       }
@@ -459,18 +584,12 @@ var planeW = Math.max(3, planeH * aspect);
       );
       pumpkin.userData = {
         velocity: new THREE.Vector3(
-//          (Math.random() - 0.5) * 0.02,
-//          -0.1 - Math.random() * 0.06,
-//          (Math.random() - 0.5) * 0.02
-          
-          
-((Math.random() - 0.5) * 0.02) * SPEED_FACTOR,
-(-0.1 - Math.random() * 0.06) * SPEED_FACTOR,
-((Math.random() - 0.5) * 0.02) * SPEED_FACTOR
-          
+            ((Math.random() - 0.5) * 0.02) * SPEED_FACTOR,
+            (-0.1 - Math.random() * 0.06) * SPEED_FACTOR,
+            ((Math.random() - 0.5) * 0.02) * SPEED_FACTOR
         ),
-rotationSpeedX: (Math.random() * 0.02) * SPEED_FACTOR,
-rotationSpeedY: (Math.random() * 0.02) * SPEED_FACTOR
+            rotationSpeedX: (Math.random() * 0.02) * SPEED_FACTOR * isRotateX,
+            rotationSpeedY: (Math.random() * 0.02) * SPEED_FACTOR
       };
 
       scene.add(pumpkin);
@@ -586,16 +705,16 @@ rotationSpeedY: (Math.random() * 0.02) * SPEED_FACTOR
       rebuildPumpkinSharedResources();
       
     // ★ ランダム俳句を初期値にセット
-    setRandomHaiku();      
+//    setRandomHaiku();      
+    setRandomHaiku4096();      
       
 // ★ 文字数が多くても最初に賑やかに見せるための初期バースト
 //    上限は createPumpkin() 内で守られます
 spawnBurst(INITIAL_BURST_COUNT);
 
-		// 初期表示位置の指定
   euler = new THREE.Euler(Math.PI / 8, -Math.PI / 2, 0, 'YXZ');
   camera.quaternion.setFromEuler(euler);
-		
+  
       window.addEventListener('resize', onWindowResize);
       // setInterval 等の周期生成は廃止。animate() 内で時間基準生成に変更。
       animate();
@@ -609,7 +728,7 @@ spawnBurst(INITIAL_BURST_COUNT);
       emojiInput.addEventListener('input', function () {
       	
         var input = emojiInput.value.trim();
-        currentEmoji = sliceGraphemes(input.length > 0 ? input : '🎃', 17);
+        currentEmoji = sliceGraphemes(input.length > 0 ? input : '🎃', 19);
 
         // 既存メッシュを全て外す（共有リソースは再構築）
         for (var i = pumpkins.length - 1; i >= 0; i--) {
@@ -685,7 +804,7 @@ canvas.addEventListener('mouseup', function() {
         event.preventDefault();
         var zoomSpeed = 0.1;
         camera.fov += event.deltaY * zoomSpeed;
-        camera.fov = clamp(camera.fov, 30, 120);
+        camera.fov = clamp(camera.fov, 30, 150);
         camera.updateProjectionMatrix();
       }, { passive: false });
 
