@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>360度パノラマアルバム</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
+    <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #333;
+        }
+        
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .thumbnail {
+            cursor: pointer;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+            background: white;
+        }
+        
+        .thumbnail:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        }
+        
+        .thumbnail img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            display: block;
+        }
+        
+        .thumbnail-title {
+            padding: 12px;
+            font-size: 14px;
+            color: #666;
+            text-align: center;
+        }
+        
+        #viewer-container {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: black;
+            z-index: 1000;
+        }
+        
+        #panorama {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1001;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .nav-controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1001;
+            display: flex;
+            gap: 10px;
+        }
+        
+        button {
+            background: rgba(255,255,255,0.9);
+            border: none;
+            padding: 12px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+        
+        button:hover {
+            background: white;
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <h1>360度パノラマアルバム</h1>
+    
+    <div class="gallery" id="gallery"></div>
+    
+    <div id="viewer-container">
+        <div class="controls">
+            <button id="closeBtn">✕ 閉じる</button>
+        </div>
+        <div class="nav-controls">
+            <button id="prevBtn">← 前へ</button>
+            <button id="nextBtn">次へ →</button>
+        </div>
+        <div id="panorama"></div>
+    </div>
+
+    <script>
+        // 画像の設定（ここにGitHubにアップロードした画像のパスを追加）
+        const images = [
+            {
+                title: 'パノラマ1',
+                url: 'https://pannellum.org/images/alma.jpg'
+            },
+            {
+                title: 'パノラマ2', 
+                url: 'https://pannellum.org/images/cerro-toco-0.jpg'
+            },
+            {
+                title: 'パノラマ3',
+                url: 'https://pannellum.org/images/jfk.jpg'
+            }
+        ];
+
+        let currentIndex = 0;
+        let viewer = null;
+
+        // ギャラリーの生成
+        const gallery = document.getElementById('gallery');
+        images.forEach((img, index) => {
+            const thumb = document.createElement('div');
+            thumb.className = 'thumbnail';
+            thumb.innerHTML = `
+                <img src="${img.url}" alt="${img.title}">
+                <div class="thumbnail-title">${img.title}</div>
+            `;
+            thumb.addEventListener('click', () => openViewer(index));
+            gallery.appendChild(thumb);
+        });
+
+        // ビューアーを開く
+        function openViewer(index) {
+            currentIndex = index;
+            document.getElementById('viewer-container').style.display = 'block';
+            loadPanorama(images[index].url);
+            updateNavButtons();
+        }
+
+        // パノラマを読み込む
+        function loadPanorama(url) {
+            if (viewer) {
+                viewer.destroy();
+            }
+            viewer = pannellum.viewer('panorama', {
+                type: 'equirectangular',
+                panorama: url,
+                autoLoad: true,
+                showControls: false,
+                mouseZoom: false
+            });
+        }
+
+        // ビューアーを閉じる
+        document.getElementById('closeBtn').addEventListener('click', () => {
+            document.getElementById('viewer-container').style.display = 'none';
+            if (viewer) {
+                viewer.destroy();
+                viewer = null;
+            }
+        });
+
+        // 前の画像
+        document.getElementById('prevBtn').addEventListener('click', () => {
+            if (currentIndex > 0) {
+                currentIndex--;
+                loadPanorama(images[currentIndex].url);
+                updateNavButtons();
+            }
+        });
+
+        // 次の画像
+        document.getElementById('nextBtn').addEventListener('click', () => {
+            if (currentIndex < images.length - 1) {
+                currentIndex++;
+                loadPanorama(images[currentIndex].url);
+                updateNavButtons();
+            }
+        });
+
+        // ナビゲーションボタンの状態更新
+        function updateNavButtons() {
+            document.getElementById('prevBtn').disabled = currentIndex === 0;
+            document.getElementById('nextBtn').disabled = currentIndex === images.length - 1;
+        }
+
+        // ESCキーで閉じる
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                document.getElementById('closeBtn').click();
+            }
+        });
+    </script>
+</body>
+</html>
