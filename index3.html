@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>360度パノラマアルバム3</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <title>360度パノラマアルバムPSV</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core/index.css"/>
     <style>
         * {
             margin: 0;
@@ -74,11 +74,6 @@
         #panorama {
             width: 100%;
             height: 100%;
-            cursor: grab;
-        }
-        
-        #panorama:active {
-            cursor: grabbing;
         }
         
         .controls {
@@ -129,6 +124,11 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
+        
+        .psv-container {
+            width: 100%;
+            height: 100%;
+        }
     </style>
 </head>
 <body>
@@ -139,8 +139,8 @@
     <div id="viewer-container">
         <div class="controls">
             <select id="projectionSelect" class="projection-select">
-                <option value="rectilinear">正射影</option>
-                <option value="stereographic">ステレオグラフィック</option>
+                <option value="equirectangular">正射影</option>
+                <option value="little-planet">リトルプラネット</option>
                 <option value="fisheye">魚眼</option>
             </select>
             <button id="closeBtn">✕ 閉じる</button>
@@ -152,16 +152,31 @@
         <div id="panorama"></div>
     </div>
 
-    <script>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "@photo-sphere-viewer/core": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core/index.module.js",
+            "@photo-sphere-viewer/little-planet-adapter": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/little-planet-adapter/index.module.js",
+            "@photo-sphere-viewer/fisheye-adapter": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/fisheye-adapter/index.module.js"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import { Viewer } from '@photo-sphere-viewer/core';
+        import { LittlePlanetAdapter } from '@photo-sphere-viewer/little-planet-adapter';
+        import { FisheyeAdapter } from '@photo-sphere-viewer/fisheye-adapter';
+
         // 画像の設定
         const images = [
             {
                 title: 'パノラマ1',
-                url: 'https://pannellum.org/images/alma.jpg'
+                url: 'https://photo-sphere-viewer-data.netlify.app/assets/sphere.jpg'
             },
             {
                 title: 'パノラマ2', 
-                url: 'https://pannellum.org/images/cerro-toco-0.jpg'
+                url: 'https://photo-sphere-viewer-data.netlify.app/assets/sphere-small.jpg'
             },
             {
                 title: 'パノラマ3',
@@ -170,15 +185,8 @@
         ];
 
         let currentIndex = 0;
-        let currentProjection = 'rectilinear';
-        
-        // Three.js変数
-        let scene, camera, renderer, sphere, material;
-        let isUserInteracting = false;
-        let onPointerDownMouseX = 0, onPointerDownMouseY = 0;
-        let lon = 0, onPointerDownLon = 0;
-        let lat = 0, onPointerDownLat = 0;
-        let phi = 0, theta = 0;
+        let currentProjection = 'equirectangular';
+        let viewer = null;
 
         // ギャラリーの生成
         const gallery = document.getElementById('gallery');
@@ -197,121 +205,67 @@
         function openViewer(index) {
             currentIndex = index;
             document.getElementById('viewer-container').style.display = 'block';
-            if (!renderer) {
+            
+            if (!viewer) {
                 initViewer();
+            } else {
+                loadPanorama(images[index].url);
             }
-            loadPanorama(images[index].url);
+            
             updateNavButtons();
-            animate();
         }
 
-        // Three.jsビューアーの初期化
+        // Photo Sphere Viewerの初期化
         function initViewer() {
             const container = document.getElementById('panorama');
             
-            // シーン作成
-            scene = new THREE.Scene();
-            
-            // カメラ作成
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 0, 0.1);
-            
-            // レンダラー作成
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            container.appendChild(renderer.domElement);
-            
-            // 球体ジオメトリ作成
-            const geometry = new THREE.SphereGeometry(500, 60, 40);
-            geometry.scale(-1, 1, 1); // 内側を向くように反転
-            
-            material = new THREE.MeshBasicMaterial();
-            sphere = new THREE.Mesh(geometry, material);
-            scene.add(sphere);
-            
-            // イベントリスナー
-            container.addEventListener('pointerdown', onPointerDown);
-            container.addEventListener('pointermove', onPointerMove);
-            container.addEventListener('pointerup', onPointerUp);
-            window.addEventListener('resize', onWindowResize);
+            viewer = new Viewer({
+                container: container,
+                panorama: images[currentIndex].url,
+                navbar: false,
+                touchmoveTwoFingers: false,
+                mousewheelCtrlKey: false,
+                defaultZoomLvl: 50,
+                fisheye: false
+            });
         }
 
         // パノラマを読み込む
         function loadPanorama(url) {
-            const textureLoader = new THREE.TextureLoader();
-            textureLoader.load(url, (texture) => {
-                material.map = texture;
-                material.needsUpdate = true;
-                updateProjection();
-            });
-        }
-
-        // 射影方式の更新
-        function updateProjection() {
-            if (currentProjection === 'rectilinear') {
-                camera.fov = 75;
-                camera.setLens = undefined;
-            } else if (currentProjection === 'stereographic') {
-                camera.fov = 120;
-                // ステレオグラフィック投影の設定
-                camera.setLens = function(focalLength, frameHeight) {
-                    if (frameHeight === undefined) frameHeight = 43.25;
-                    this.fov = 2 * THREE.MathUtils.radToDeg(Math.atan(frameHeight / (focalLength * 2)));
-                    this.updateProjectionMatrix();
-                };
-                camera.setLens(10);
-            } else if (currentProjection === 'fisheye') {
-                camera.fov = 150;
-            }
-            camera.updateProjectionMatrix();
-        }
-
-        // アニメーションループ
-        function animate() {
-            if (document.getElementById('viewer-container').style.display === 'none') {
-                return;
-            }
-            requestAnimationFrame(animate);
-            update();
-        }
-
-        function update() {
-            lat = Math.max(-85, Math.min(85, lat));
-            phi = THREE.MathUtils.degToRad(90 - lat);
-            theta = THREE.MathUtils.degToRad(lon);
-
-            const x = 500 * Math.sin(phi) * Math.cos(theta);
-            const y = 500 * Math.cos(phi);
-            const z = 500 * Math.sin(phi) * Math.sin(theta);
-
-            camera.lookAt(x, y, z);
-            renderer.render(scene, camera);
-        }
-
-        // マウス/タッチイベント
-        function onPointerDown(event) {
-            isUserInteracting = true;
-            onPointerDownMouseX = event.clientX;
-            onPointerDownMouseY = event.clientY;
-            onPointerDownLon = lon;
-            onPointerDownLat = lat;
-        }
-
-        function onPointerMove(event) {
-            if (isUserInteracting) {
-                lon = (onPointerDownMouseX - event.clientX) * 0.1 + onPointerDownLon;
-                lat = (event.clientY - onPointerDownMouseY) * 0.1 + onPointerDownLat;
+            if (viewer) {
+                viewer.setPanorama(url, {
+                    transition: false
+                });
             }
         }
 
-        function onPointerUp() {
-            isUserInteracting = false;
-        }
-
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+        // 射影方式の変更
+        function changeProjection(projection) {
+            if (!viewer) return;
+            
+            const currentPanorama = images[currentIndex].url;
+            const container = document.getElementById('panorama');
+            
+            // ビューアーを破棄して再作成
+            viewer.destroy();
+            
+            const config = {
+                container: container,
+                panorama: currentPanorama,
+                navbar: false,
+                touchmoveTwoFingers: false,
+                mousewheelCtrlKey: false,
+                defaultZoomLvl: 50
+            };
+            
+            // 射影方式に応じてアダプターを設定
+            if (projection === 'little-planet') {
+                config.adapter = LittlePlanetAdapter;
+            } else if (projection === 'fisheye') {
+                config.adapter = FisheyeAdapter;
+            }
+            
+            viewer = new Viewer(config);
         }
 
         // ビューアーを閉じる
@@ -343,10 +297,10 @@
             document.getElementById('nextBtn').disabled = currentIndex === images.length - 1;
         }
 
-        // 射影方式の変更
+        // 射影方式セレクトの変更
         document.getElementById('projectionSelect').addEventListener('change', (e) => {
             currentProjection = e.target.value;
-            updateProjection();
+            changeProjection(currentProjection);
         });
 
         // ESCキーで閉じる
