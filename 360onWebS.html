@@ -571,7 +571,7 @@ z-index: 15;
                     🖼️+360onWeb
                 </button>
                 <select id="guidelineSelect" class="guideline-select">
-                    <option value="none">ガイドなし(1～16)</option>
+                    <option value="none">ガイドなし(1～17)</option>
                     <option value="line01"> 1.同心円</option>
                     <option value="line02"> 2.三重円</option>
                     <option value="line03"> 3.円分割</option>
@@ -588,6 +588,7 @@ z-index: 15;
                     <option value="line14">14.U字</option>
                     <option value="line15">15.二つ窓</option>
                     <option value="line16">16.電影クロスゲージ</option>
+                    <option value="line17">17.三角構図</option>
                 </select>
                 <button class="random-btn" id="randomBtn">🤯</button>
             </div>
@@ -760,7 +761,7 @@ let framePending = false;
         let currentStateIndex = -1;
         const MAX_HISTORY = 20; // 最大20回までのUndoを保存
 
-        const guidelineTypes = ['line01', 'line02', 'line03', 'line04', 'line05', 'line06', 'line07', 'line08', 'line09', 'line10', 'line11', 'line12', 'line13', 'line14', 'line15', 'line16'];
+        const guidelineTypes = ['line01', 'line02', 'line03', 'line04', 'line05', 'line06', 'line07', 'line08', 'line09', 'line10', 'line11', 'line12', 'line13', 'line14', 'line15', 'line16', 'line17'];
 
         // DOM要素の取得
 
